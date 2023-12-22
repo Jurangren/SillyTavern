@@ -4,8 +4,7 @@
     "requires": [],
     "optional": [
         "silero-tts",
-        "edge-tts",
-        "coqui-tts"
+        "edge-tts"
     ],
     "js": "index.js",
     "css": "style.css",

@@ -1,22 +1,20 @@
-import { doExtrasFetch, getApiUrl, modules } from '../../extensions.js';
-import { saveTtsProviderSettings } from './index.js';
+import { doExtrasFetch, getApiUrl, modules } from "../../extensions.js"
 
-export { SileroTtsProvider };
+export { SileroTtsProvider }
 
 class SileroTtsProvider {
     //########//
     // Config //
     //########//
 
-    settings;
-    ready = false;
-    voices = [];
-    separator = ' .. ';
+    settings
+    voices = []
+    separator = ' .. '
 
     defaultSettings = {
-        provider_endpoint: 'http://localhost:8001/tts',
-        voiceMap: {},
-    };
+        provider_endpoint: "http://localhost:8001/tts",
+        voiceMap: {}
+    }
 
     get settingsHtml() {
         let html = `
@@ -24,31 +22,29 @@ class SileroTtsProvider {
         <input id="silero_tts_endpoint" type="text" class="text_pole" maxlength="250" value="${this.defaultSettings.provider_endpoint}"/>
         <span>
         <span>Use <a target="_blank" href="https://github.com/SillyTavern/SillyTavern-extras">SillyTavern Extras API</a> or <a target="_blank" href="https://github.com/ouoertheo/silero-api-server">Silero TTS Server</a>.</span>
-        `;
-        return html;
+        `
+        return html
     }
 
     onSettingsChange() {
         // Used when provider settings are updated from UI
-        this.settings.provider_endpoint = $('#silero_tts_endpoint').val();
-        saveTtsProviderSettings();
-        this.refreshSession();
+        this.settings.provider_endpoint = $('#silero_tts_endpoint').val()
     }
 
-    async loadSettings(settings) {
+    loadSettings(settings) {
         // Pupulate Provider UI given input settings
         if (Object.keys(settings).length == 0) {
-            console.info('Using default TTS Provider settings');
+            console.info("Using default TTS Provider settings")
         }
 
         // Only accept keys defined in defaultSettings
-        this.settings = this.defaultSettings;
+        this.settings = this.defaultSettings
 
-        for (const key in settings) {
-            if (key in this.settings) {
-                this.settings[key] = settings[key];
+        for (const key in settings){
+            if (key in this.settings){
+                this.settings[key] = settings[key]
             } else {
-                throw `Invalid setting passed to TTS Provider: ${key}`;
+                throw `Invalid setting passed to TTS Provider: ${key}`
             }
         }
 
@@ -63,26 +59,13 @@ class SileroTtsProvider {
             }
         }, 2000);
 
-        $('#silero_tts_endpoint').val(this.settings.provider_endpoint);
-        $('#silero_tts_endpoint').on('input', () => { this.onSettingsChange(); });
-        this.refreshSession();
-
-        await this.checkReady();
-
-        console.debug('SileroTTS: Settings loaded');
+        $('#silero_tts_endpoint').val(this.settings.provider_endpoint)
+        console.info("Settings loaded")
     }
 
-    // Perform a simple readiness check by trying to fetch voiceIds
-    async checkReady() {
-        await this.fetchTtsVoiceObjects();
-    }
 
-    async onRefreshClick() {
-        return;
-    }
-
-    async refreshSession() {
-        await this.initSession();
+    async onApplyClick() {
+        return
     }
 
     //#################//
@@ -91,81 +74,55 @@ class SileroTtsProvider {
 
     async getVoice(voiceName) {
         if (this.voices.length == 0) {
-            this.voices = await this.fetchTtsVoiceObjects();
+            this.voices = await this.fetchTtsVoiceIds()
         }
         const match = this.voices.filter(
-            sileroVoice => sileroVoice.name == voiceName,
-        )[0];
+            sileroVoice => sileroVoice.name == voiceName
+        )[0]
         if (!match) {
-            throw `TTS Voice name ${voiceName} not found`;
+            throw `TTS Voice name ${voiceName} not found`
         }
-        return match;
+        return match
     }
 
-    async generateTts(text, voiceId) {
-        const response = await this.fetchTtsGeneration(text, voiceId);
-        return response;
+    async generateTts(text, voiceId){
+        const response = await this.fetchTtsGeneration(text, voiceId)
+        return response
     }
 
     //###########//
     // API CALLS //
     //###########//
-    async fetchTtsVoiceObjects() {
-        const response = await doExtrasFetch(`${this.settings.provider_endpoint}/speakers`);
+    async fetchTtsVoiceIds() {
+        const response = await doExtrasFetch(`${this.settings.provider_endpoint}/speakers`)
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${await response.json()}`);
+            throw new Error(`HTTP ${response.status}: ${await response.json()}`)
         }
-        const responseJson = await response.json();
-        return responseJson;
+        const responseJson = await response.json()
+        return responseJson
     }
 
     async fetchTtsGeneration(inputText, voiceId) {
-        console.info(`Generating new TTS for voice_id ${voiceId}`);
+        console.info(`Generating new TTS for voice_id ${voiceId}`)
         const response = await doExtrasFetch(
             `${this.settings.provider_endpoint}/generate`,
             {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Cache-Control': 'no-cache',  // Added this line to disable caching of file so new files are always played - Rolyat 7/7/23
+					'Cache-Control': 'no-cache'  // Added this line to disable caching of file so new files are always played - Rolyat 7/7/23
                 },
                 body: JSON.stringify({
-                    'text': inputText,
-                    'speaker': voiceId,
-                    'session': 'sillytavern',
-                }),
-            },
-        );
+                    "text": inputText,
+                    "speaker": voiceId
+                })
+            }
+        )
         if (!response.ok) {
             toastr.error(response.statusText, 'TTS Generation Failed');
             throw new Error(`HTTP ${response.status}: ${await response.text()}`);
         }
-        return response;
-    }
-
-    async initSession() {
-        console.info('Silero TTS: requesting new session');
-        try {
-            const response = await doExtrasFetch(
-                `${this.settings.provider_endpoint}/session`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Cache-Control': 'no-cache',
-                    },
-                    body: JSON.stringify({
-                        'path': 'sillytavern',
-                    }),
-                },
-            );
-
-            if (!response.ok && response.status !== 404) {
-                throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-            }
-        } catch (error) {
-            console.info('Silero TTS: endpoint not available', error);
-        }
+        return response
     }
 
     // Interface not used by Silero TTS

@@ -1,5 +1,3 @@
-export { translate };
-
 import {
     callPopup,
     eventSource,
@@ -9,11 +7,11 @@ import {
     saveSettingsDebounced,
     substituteParams,
     updateMessageBlock,
-} from '../../../script.js';
-import { extension_settings, getContext } from '../../extensions.js';
-import { secret_state, writeSecret } from '../../secrets.js';
+} from "../../../script.js";
+import { extension_settings, getContext } from "../../extensions.js";
+import { secret_state, writeSecret } from "../../secrets.js";
 
-export const autoModeOptions = {
+const autoModeOptions = {
     NONE: 'none',
     RESPONSES: 'responses',
     INPUT: 'inputs',
@@ -137,21 +135,17 @@ const languageCodes = {
     'Zulu': 'zu',
 };
 
-const KEY_REQUIRED = ['deepl', 'libre'];
-const LOCAL_URL = ['libre', 'oneringtranslator', 'deeplx'];
+const KEY_REQUIRED = ['deepl'];
 
-function showKeysButton() {
+function showKeyButton() {
     const providerRequiresKey = KEY_REQUIRED.includes(extension_settings.translate.provider);
-    const providerOptionalUrl = LOCAL_URL.includes(extension_settings.translate.provider);
-    $('#translate_key_button').toggle(providerRequiresKey);
-    $('#translate_key_button').toggleClass('success', Boolean(secret_state[extension_settings.translate.provider]));
-    $('#translate_url_button').toggle(providerOptionalUrl);
-    $('#translate_url_button').toggleClass('success', Boolean(secret_state[extension_settings.translate.provider + '_url']));
+    $("#translate_key_button").toggle(providerRequiresKey);
+    $("#translate_key_button").toggleClass('success', Boolean(secret_state[extension_settings.translate.provider]));
 }
 
 function loadSettings() {
     for (const key in defaultSettings) {
-        if (!Object.hasOwn(extension_settings.translate, key)) {
+        if (!extension_settings.translate.hasOwnProperty(key)) {
             extension_settings.translate[key] = defaultSettings[key];
         }
     }
@@ -159,12 +153,12 @@ function loadSettings() {
     $(`#translation_provider option[value="${extension_settings.translate.provider}"]`).attr('selected', true);
     $(`#translation_target_language option[value="${extension_settings.translate.target_language}"]`).attr('selected', true);
     $(`#translation_auto_mode option[value="${extension_settings.translate.auto_mode}"]`).attr('selected', true);
-    showKeysButton();
+    showKeyButton();
 }
 
 async function translateImpersonate(text) {
     const translatedText = await translate(text, extension_settings.translate.target_language);
-    $('#send_textarea').val(translatedText);
+    $("#send_textarea").val(translatedText);
 }
 
 async function translateIncomingMessage(messageId) {
@@ -187,54 +181,8 @@ async function translateIncomingMessage(messageId) {
     updateMessageBlock(messageId, message);
 }
 
-async function translateProviderOneRing(text, lang) {
-    let from_lang = lang == extension_settings.translate.internal_language
-        ? extension_settings.translate.target_language
-        : extension_settings.translate.internal_language;
-
-    const response = await fetch('/api/translate/onering', {
-        method: 'POST',
-        headers: getRequestHeaders(),
-        body: JSON.stringify({ text: text, from_lang: from_lang, to_lang: lang }),
-    });
-
-    if (response.ok) {
-        const result = await response.text();
-        return result;
-    }
-
-    throw new Error(response.statusText);
-}
-
-/**
- * Translates text using the LibreTranslate API
- * @param {string} text Text to translate
- * @param {string} lang Target language code
- * @returns {Promise<string>} Translated text
- */
-async function translateProviderLibre(text, lang) {
-    const response = await fetch('/api/translate/libre', {
-        method: 'POST',
-        headers: getRequestHeaders(),
-        body: JSON.stringify({ text: text, lang: lang }),
-    });
-
-    if (response.ok) {
-        const result = await response.text();
-        return result;
-    }
-
-    throw new Error(response.statusText);
-}
-
-/**
- * Translates text using the Google Translate API
- * @param {string} text Text to translate
- * @param {string} lang Target language code
- * @returns {Promise<string>} Translated text
- */
 async function translateProviderGoogle(text, lang) {
-    const response = await fetch('/api/translate/google', {
+    const response = await fetch('/google_translate', {
         method: 'POST',
         headers: getRequestHeaders(),
         body: JSON.stringify({ text: text, lang: lang }),
@@ -248,18 +196,12 @@ async function translateProviderGoogle(text, lang) {
     throw new Error(response.statusText);
 }
 
-/**
- * Translates text using the DeepL API
- * @param {string} text Text to translate
- * @param {string} lang Target language code
- * @returns {Promise<string>} Translated text
- */
 async function translateProviderDeepl(text, lang) {
     if (!secret_state.deepl) {
         throw new Error('No DeepL API key');
     }
 
-    const response = await fetch('/api/translate/deepl', {
+    const response = await fetch('/deepl_translate', {
         method: 'POST',
         headers: getRequestHeaders(),
         body: JSON.stringify({ text: text, lang: lang }),
@@ -273,73 +215,13 @@ async function translateProviderDeepl(text, lang) {
     throw new Error(response.statusText);
 }
 
-/**
- * Translates text using the DeepLX API
- * @param {string} text Text to translate
- * @param {string} lang Target language code
- * @returns {Promise<string>} Translated text
- */
-async function translateProviderDeepLX(text, lang) {
-    const response = await fetch('/api/translate/deeplx', {
-        method: 'POST',
-        headers: getRequestHeaders(),
-        body: JSON.stringify({ text: text, lang: lang }),
-    });
-
-    if (response.ok) {
-        const result = await response.text();
-        return result;
-    }
-
-    throw new Error(response.statusText);
-}
-
-/**
- * Translates text using the Bing API
- * @param {string} text Text to translate
- * @param {string} lang Target language code
- * @returns {Promise<string>} Translated text
- */
-async function translateProviderBing(text, lang) {
-    const response = await fetch('/api/translate/bing', {
-        method: 'POST',
-        headers: getRequestHeaders(),
-        body: JSON.stringify({ text: text, lang: lang }),
-    });
-
-    if (response.ok) {
-        const result = await response.text();
-        return result;
-    }
-
-    throw new Error(response.statusText);
-}
-
-/**
- * Translates text using the selected translation provider
- * @param {string} text Text to translate
- * @param {string} lang Target language code
- * @returns {Promise<string>} Translated text
- */
 async function translate(text, lang) {
     try {
-        if (text == '') {
-            return '';
-        }
-
         switch (extension_settings.translate.provider) {
-            case 'libre':
-                return await translateProviderLibre(text, lang);
             case 'google':
                 return await translateProviderGoogle(text, lang);
             case 'deepl':
                 return await translateProviderDeepl(text, lang);
-            case 'deeplx':
-                return await translateProviderDeepLX(text, lang);
-            case 'oneringtranslator':
-                return await translateProviderOneRing(text, lang);
-            case 'bing':
-                return await translateProviderBing(text, lang);
             default:
                 console.error('Unknown translation provider', extension_settings.translate.provider);
                 return text;
@@ -482,15 +364,10 @@ jQuery(() => {
                 <label for="translation_provider">Provider</label>
                 <div class="flex-container gap5px flexnowrap marginBot5">
                     <select id="translation_provider" name="provider" class="margin0">
-                        <option value="libre">Libre</option>
                         <option value="google">Google</option>
                         <option value="deepl">DeepL</option>
-                        <option value="deeplx">DeepLX</option>
-                        <option value="bing">Bing</option>
-                        <option value="oneringtranslator">OneRingTranslator</option>
                     <select>
                     <div id="translate_key_button" class="menu_button fa-solid fa-key margin0"></div>
-                    <div id="translate_url_button" class="menu_button fa-solid fa-link margin0"></div>
                 </div>
                 <label for="translation_target_language">Target Language</label>
                 <select id="translation_target_language" name="target_language"></select>
@@ -522,7 +399,7 @@ jQuery(() => {
     });
     $('#translation_provider').on('change', (event) => {
         extension_settings.translate.provider = event.target.value;
-        showKeysButton();
+        showKeyButton();
         saveSettingsDebounced();
     });
     $('#translation_target_language').on('change', (event) => {
@@ -540,32 +417,13 @@ jQuery(() => {
 
         await writeSecret(extension_settings.translate.provider, key);
         toastr.success('API Key saved');
-        $('#translate_key_button').addClass('success');
-    });
-    $('#translate_url_button').on('click', async () => {
-        const optionText = $('#translation_provider option:selected').text();
-        const exampleURLs = {
-            'libre': 'http://127.0.0.1:5000/translate',
-            'oneringtranslator': 'http://127.0.0.1:4990/translate',
-            'deeplx': 'http://127.0.0.1:1188/translate',
-        };
-        const popupText = `<h3>${optionText} API URL</h3><i>Example: <tt>${String(exampleURLs[extension_settings.translate.provider])}</tt></i>`;
-        const url = await callPopup(popupText, 'input');
-
-        if (url == false) {
-            return;
-        }
-
-        await writeSecret(extension_settings.translate.provider + '_url', url);
-        toastr.success('API URL saved');
-        $('#translate_url_button').addClass('success');
     });
 
     loadSettings();
 
-    eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, handleIncomingMessage);
+    eventSource.on(event_types.MESSAGE_RECEIVED, handleIncomingMessage);
     eventSource.on(event_types.MESSAGE_SWIPED, handleIncomingMessage);
-    eventSource.on(event_types.USER_MESSAGE_RENDERED, handleOutgoingMessage);
+    eventSource.on(event_types.MESSAGE_SENT, handleOutgoingMessage);
     eventSource.on(event_types.IMPERSONATE_READY, handleImpersonateReady);
     eventSource.on(event_types.MESSAGE_EDITED, handleMessageEdit);
 

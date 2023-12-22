@@ -1,6 +1,7 @@
 import {
     characters,
     saveChat,
+    sendSystemMessage,
     system_messages,
     system_message_types,
     this_chid,
@@ -12,40 +13,40 @@ import {
     getCharacters,
     chat,
     saveChatConditional,
-} from '../script.js';
-import { humanizedDateTime } from './RossAscends-mods.js';
+} from "../script.js";
+import { humanizedDateTime } from "./RossAscends-mods.js";
 import {
     getGroupPastChats,
     group_activation_strategy,
     groups,
-    openGroupById,
     openGroupChat,
     saveGroupBookmarkChat,
     selected_group,
-} from './group-chats.js';
-import { createTagMapFromList } from './tags.js';
+} from "./group-chats.js";
+import { createTagMapFromList } from "./tags.js";
 
 import {
     delay,
     getUniqueName,
-} from './utils.js';
+    stringFormat,
+} from "./utils.js";
 
 export {
     createNewBookmark,
     showBookmarksButtons,
-};
+}
 
-const bookmarkNameToken = 'Checkpoint #';
+const bookmarkNameToken = 'Bookmark #';
 
 async function getExistingChatNames() {
     if (selected_group) {
         const data = await getGroupPastChats(selected_group);
         return data.map(x => x.file_name);
     } else {
-        const response = await fetch('/api/characters/chats', {
+        const response = await fetch("/getallchatsofcharacter", {
             method: 'POST',
             headers: getRequestHeaders(),
-            body: JSON.stringify({ avatar_url: characters[this_chid].avatar }),
+            body: JSON.stringify({ avatar_url: characters[this_chid].avatar })
         });
 
         if (response.ok) {
@@ -57,7 +58,7 @@ async function getExistingChatNames() {
 
 async function getBookmarkName() {
     const chatNames = await getExistingChatNames();
-    const popupText = `<h3>Enter the checkpoint name:<h3>
+    const popupText = `<h3>Enter the bookmark name:<h3>
     <small>Leave empty to auto-generate.</small>`;
     let name = await callPopup(popupText, 'input');
 
@@ -97,82 +98,49 @@ function getMainChatName() {
 function showBookmarksButtons() {
     try {
         if (selected_group) {
-            $('#option_convert_to_group').hide();
+            $("#option_convert_to_group").hide();
         } else {
-            $('#option_convert_to_group').show();
+            $("#option_convert_to_group").show();
         }
 
         if (chat_metadata['main_chat']) {
             // In bookmark chat
-            $('#option_back_to_main').show();
-            $('#option_new_bookmark').show();
+            $("#option_back_to_main").show();
+            $("#option_new_bookmark").show();
         } else if (!selected_group && !characters[this_chid].chat) {
             // No chat recorded on character
-            $('#option_back_to_main').hide();
-            $('#option_new_bookmark').hide();
+            $("#option_back_to_main").hide();
+            $("#option_new_bookmark").hide();
         } else {
             // In main chat
-            $('#option_back_to_main').hide();
-            $('#option_new_bookmark').show();
+            $("#option_back_to_main").hide();
+            $("#option_new_bookmark").show();
         }
     }
     catch {
-        $('#option_back_to_main').hide();
-        $('#option_new_bookmark').hide();
-        $('#option_convert_to_group').hide();
+        $("#option_back_to_main").hide();
+        $("#option_new_bookmark").hide();
+        $("#option_convert_to_group").hide();
     }
 }
 
 async function saveBookmarkMenu() {
     if (!chat.length) {
-        toastr.warning('The chat is empty.', 'Checkpoint creation failed');
+        toastr.warning('The chat is empty.', 'Bookmark creation failed');
         return;
     }
 
     return createNewBookmark(chat.length - 1);
 }
 
-export async function createBranch(mesId) {
-    if (!chat.length) {
-        toastr.warning('The chat is empty.', 'Branch creation failed');
-        return;
-    }
-
-    if (mesId < 0 || mesId >= chat.length) {
-        toastr.warning('Invalid message ID.', 'Branch creation failed');
-        return;
-    }
-
-    const lastMes = chat[mesId];
-    const mainChat = selected_group ? groups?.find(x => x.id == selected_group)?.chat_id : characters[this_chid].chat;
-    const newMetadata = { main_chat: mainChat };
-    let name = `Branch #${mesId} - ${humanizedDateTime()}`;
-
-    if (selected_group) {
-        await saveGroupBookmarkChat(selected_group, name, newMetadata, mesId);
-    } else {
-        await saveChat(name, newMetadata, mesId);
-    }
-    // append to branches list if it exists
-    // otherwise create it
-    if (typeof lastMes.extra !== 'object') {
-        lastMes.extra = {};
-    }
-    if (typeof lastMes.extra['branches'] !== 'object') {
-        lastMes.extra['branches'] = [];
-    }
-    lastMes.extra['branches'].push(name);
-    return name;
-}
-
 async function createNewBookmark(mesId) {
     if (!chat.length) {
-        toastr.warning('The chat is empty.', 'Checkpoint creation failed');
+        toastr.warning('The chat is empty.', 'Bookmark creation failed');
         return;
     }
 
     if (mesId < 0 || mesId >= chat.length) {
-        toastr.warning('Invalid message ID.', 'Checkpoint creation failed');
+        toastr.warning('Invalid message ID.', 'Bookmark creation failed');
         return;
     }
 
@@ -183,7 +151,7 @@ async function createNewBookmark(mesId) {
     }
 
     if (lastMes.extra.bookmark_link) {
-        const confirm = await callPopup('Checkpoint for the last message already exists. Would you like to replace it?', 'confirm');
+        const confirm = await callPopup('Bookmark checkpoint for the last message already exists. Would you like to replace it?', 'confirm');
 
         if (!confirm) {
             return;
@@ -210,7 +178,7 @@ async function createNewBookmark(mesId) {
     $(`.mes[mesid="${mesId}"]`).attr('bookmark_link', name);
 
     await saveChatConditional();
-    toastr.success('Click the flag icon in the last message to open the checkpoint chat.', 'Checkpoint created', { timeOut: 10000 });
+    toastr.success('Click the bookmark icon in the last message to open the checkpoint chat.', 'Bookmark created', { timeOut: 10000 });
 }
 
 async function backToMainChat() {
@@ -251,8 +219,8 @@ async function convertSoloToGroupChat() {
     const metadata = Object.assign({}, chat_metadata);
     delete metadata.main_chat;
 
-    const createGroupResponse = await fetch('/api/groups/create', {
-        method: 'POST',
+    const createGroupResponse = await fetch("/creategroup", {
+        method: "POST",
         headers: getRequestHeaders(),
         body: JSON.stringify({
             name: name,
@@ -276,7 +244,7 @@ async function convertSoloToGroupChat() {
     const group = await createGroupResponse.json();
 
     // Convert tags list and assign to group
-    createTagMapFromList('#tagList', group.id);
+    createTagMapFromList("#tagList", group.id);
 
     // Update chars list
     await getCharacters();
@@ -290,7 +258,7 @@ async function convertSoloToGroupChat() {
         const newMessage = {
             ...system_messages[system_message_types.GROUP],
             send_date: humanizedDateTime(),
-            extra: { type: system_message_types.GROUP },
+            extra: { type: system_message_types.GROUP }
         };
         groupChat.push(newMessage);
     }
@@ -312,6 +280,7 @@ async function convertSoloToGroupChat() {
         message.name = character.name;
         message.original_avatar = character.avatar;
         message.force_avatar = getThumbnailUrl('avatar', character.avatar);
+        message.is_name = true;
 
         // Allow regens of a single message in group
         if (typeof message.extra !== 'object') {
@@ -320,8 +289,8 @@ async function convertSoloToGroupChat() {
     }
 
     // Save group chat
-    const createChatResponse = await fetch('/api/chats/group/save', {
-        method: 'POST',
+    const createChatResponse = await fetch("/savegroupchat", {
+        method: "POST",
         headers: getRequestHeaders(),
         body: JSON.stringify({ id: chatName, chat: groupChat }),
     });
@@ -332,12 +301,13 @@ async function convertSoloToGroupChat() {
     }
 
     // Click on the freshly selected group to open it
-    await openGroupById(group.id);
+    $(`.group_select[grid="${group.id}"]`).click();
 
+    await delay(1);
     toastr.success('The chat has been successfully converted!');
 }
 
-jQuery(function () {
+$(document).ready(function () {
     $('#option_new_bookmark').on('click', saveBookmarkMenu);
     $('#option_back_to_main').on('click', backToMainChat);
     $('#option_convert_to_group').on('click', convertSoloToGroupChat);
